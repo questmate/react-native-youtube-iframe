@@ -63,55 +63,58 @@ const YoutubeIframe = (props, ref) => {
     ref,
     () => ({
       getVideoUrl: () => {
-        webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.getVideoUrlScript);
+        // webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.getVideoUrlScript);
+        webViewRef.current.postMessage(
+          JSON.stringify({eventType: 'getVideoUrl'}),
+        );
         return new Promise(resolve => {
           eventEmitter.current.once('getVideoUrl', resolve);
         });
       },
       getDuration: () => {
-        webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.durationScript);
+        // webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.durationScript);
         return new Promise(resolve => {
           eventEmitter.current.once('getDuration', resolve);
         });
       },
       getCurrentTime: () => {
-        webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.currentTimeScript);
+        // webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.currentTimeScript);
         return new Promise(resolve => {
           eventEmitter.current.once('getCurrentTime', resolve);
         });
       },
       isMuted: () => {
-        webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.isMutedScript);
+        // webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.isMutedScript);
         return new Promise(resolve => {
           eventEmitter.current.once('isMuted', resolve);
         });
       },
       getVolume: () => {
-        webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.getVolumeScript);
+        // webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.getVolumeScript);
         return new Promise(resolve => {
           eventEmitter.current.once('getVolume', resolve);
         });
       },
       getPlaybackRate: () => {
-        webViewRef.current.injectJavaScript(
-          PLAYER_FUNCTIONS.getPlaybackRateScript,
-        );
+        // webViewRef.current.injectJavaScript(
+        //   PLAYER_FUNCTIONS.getPlaybackRateScript,
+        // );
         return new Promise(resolve => {
           eventEmitter.current.once('getPlaybackRate', resolve);
         });
       },
       getAvailablePlaybackRates: () => {
-        webViewRef.current.injectJavaScript(
-          PLAYER_FUNCTIONS.getAvailablePlaybackRatesScript,
-        );
+        // webViewRef.current.injectJavaScript(
+        //   PLAYER_FUNCTIONS.getAvailablePlaybackRatesScript,
+        // );
         return new Promise(resolve => {
           eventEmitter.current.once('getAvailablePlaybackRates', resolve);
         });
       },
       seekTo: (seconds, allowSeekAhead) => {
-        webViewRef.current.injectJavaScript(
-          PLAYER_FUNCTIONS.seekToScript(seconds, allowSeekAhead),
-        );
+        // webViewRef.current.injectJavaScript(
+        //   PLAYER_FUNCTIONS.seekToScript(seconds, allowSeekAhead),
+        // );
       },
     }),
     [],
@@ -123,12 +126,12 @@ const YoutubeIframe = (props, ref) => {
       return;
     }
 
-    [
-      playMode[play],
-      soundMode[mute],
-      PLAYER_FUNCTIONS.setVolume(volume),
-      PLAYER_FUNCTIONS.setPlaybackRate(playbackRate),
-    ].forEach(webViewRef.current.injectJavaScript);
+    // [
+    //   playMode[play],
+    //   soundMode[mute],
+    //   PLAYER_FUNCTIONS.setVolume(volume),
+    //   PLAYER_FUNCTIONS.setPlaybackRate(playbackRate),
+    // ].forEach(webViewRef.current.injectJavaScript);
   }, [play, mute, volume, playbackRate, playerReady]);
 
   useEffect(() => {
@@ -140,9 +143,9 @@ const YoutubeIframe = (props, ref) => {
 
     lastVideoIdRef.current = videoId;
 
-    webViewRef.current.injectJavaScript(
-      PLAYER_FUNCTIONS.loadVideoById(videoId, play),
-    );
+    // webViewRef.current.injectJavaScript(
+    //   PLAYER_FUNCTIONS.loadVideoById(videoId, play),
+    // );
   }, [videoId, play, playerReady]);
 
   useEffect(() => {
@@ -159,15 +162,18 @@ const YoutubeIframe = (props, ref) => {
 
     lastPlayListRef.current = playList;
 
-    webViewRef.current.injectJavaScript(
-      PLAYER_FUNCTIONS.loadPlaylist(playList, playListStartIndex, play),
-    );
+    // webViewRef.current.injectJavaScript(
+    //   PLAYER_FUNCTIONS.loadPlaylist(playList, playListStartIndex, play),
+    // );
   }, [playList, play, playListStartIndex, playerReady]);
 
   const onWebMessage = useCallback(
     event => {
       try {
+        console.log("YoutubeIframe:174 - matches source", event.nativeEvent.source === webViewRef.current);
+        console.log("YoutubeIframe:173 - onWebMessage", event);
         const message = JSON.parse(event.nativeEvent.data);
+        console.log("YoutubeIframe:175 - message", message.eventType, message.data);
 
         switch (message.eventType) {
           case 'fullScreenChange':
