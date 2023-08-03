@@ -1,27 +1,22 @@
 import React, {
-  useRef,
-  useMemo,
-  useState,
-  useEffect,
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
 } from 'react';
 import {Linking, Platform, StyleSheet, View} from 'react-native';
 import {EventEmitter} from 'events';
 import {WebView} from './WebView';
 import {
+  CUSTOM_USER_AGENT,
+  DEFAULT_BASE_URL,
   PLAYER_ERROR,
   PLAYER_STATES,
-  DEFAULT_BASE_URL,
-  CUSTOM_USER_AGENT,
 } from './constants';
-import {
-  playMode,
-  soundMode,
-  MAIN_SCRIPT,
-  PLAYER_FUNCTIONS,
-} from './PlayerScripts';
+import {MAIN_SCRIPT} from './PlayerScripts';
 import {deepComparePlayList} from './utils';
 
 const YoutubeIframe = (props, ref) => {
@@ -58,80 +53,107 @@ const YoutubeIframe = (props, ref) => {
 
   const webViewRef = useRef(null);
   const eventEmitter = useRef(new EventEmitter());
+  const executionCounter = useRef({
+    _id: 0,
+    nextId() {
+      return this._id++;
+    },
+  }).current;
 
-  useImperativeHandle(
-    ref,
-    () => ({
-      getVideoUrl: () => {
-        // webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.getVideoUrlScript);
+  const executePlayerMethod = useCallback(
+    (methodName, methodArguments = []) => {
+      if (!Array.isArray(methodArguments)) {
+        throw new Error('methodArguments must be an array');
+      }
+
+      if (webViewRef.current) {
+        const executionId = executionCounter.nextId();
         webViewRef.current.postMessage(
-          JSON.stringify({eventType: 'getVideoUrl'}),
+          JSON.stringify({
+            eventType: 'executePlayerMethod',
+            data: {
+              id: executionId,
+              method: methodName,
+              args: methodArguments,
+            },
+          }),
+          '*',
         );
-        return new Promise(resolve => {
-          eventEmitter.current.once('getVideoUrl', resolve);
+        return new Promise((resolve, reject) => {
+          // todo: consider adding a timeout here to reject the promise
+          //       after x seconds of not receiving a response;
+          eventEmitter.current.once(
+            `playerMethodExecuted(${executionId})`,
+            event => {
+              if (event.error) {
+                reject(event.error);
+              } else {
+                resolve(event.result);
+              }
+            },
+          );
         });
-      },
-      getDuration: () => {
-        // webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.durationScript);
-        return new Promise(resolve => {
-          eventEmitter.current.once('getDuration', resolve);
-        });
-      },
-      getCurrentTime: () => {
-        // webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.currentTimeScript);
-        return new Promise(resolve => {
-          eventEmitter.current.once('getCurrentTime', resolve);
-        });
-      },
-      isMuted: () => {
-        // webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.isMutedScript);
-        return new Promise(resolve => {
-          eventEmitter.current.once('isMuted', resolve);
-        });
-      },
-      getVolume: () => {
-        // webViewRef.current.injectJavaScript(PLAYER_FUNCTIONS.getVolumeScript);
-        return new Promise(resolve => {
-          eventEmitter.current.once('getVolume', resolve);
-        });
-      },
-      getPlaybackRate: () => {
-        // webViewRef.current.injectJavaScript(
-        //   PLAYER_FUNCTIONS.getPlaybackRateScript,
-        // );
-        return new Promise(resolve => {
-          eventEmitter.current.once('getPlaybackRate', resolve);
-        });
-      },
-      getAvailablePlaybackRates: () => {
-        // webViewRef.current.injectJavaScript(
-        //   PLAYER_FUNCTIONS.getAvailablePlaybackRatesScript,
-        // );
-        return new Promise(resolve => {
-          eventEmitter.current.once('getAvailablePlaybackRates', resolve);
-        });
-      },
-      seekTo: (seconds, allowSeekAhead) => {
-        // webViewRef.current.injectJavaScript(
-        //   PLAYER_FUNCTIONS.seekToScript(seconds, allowSeekAhead),
-        // );
-      },
-    }),
-    [],
+      } else {
+        console.error('Missing webview ref! Unable to send message to iframe.');
+        return Promise.reject('Missing webview ref!');
+      }
+    },
+    [executionCounter],
   );
+
+  const [playerController, setPlayerController] = useState({
+    supportedApiMethods: [],
+  });
+  const playerControllerRef = useRef(playerController);
+
+  const initializePlayerController = useCallback(
+    onReadyMessageData => {
+      console.log(
+        'YoutubeIframe:110 - initializePlayerController - onReadyMessageData',
+        onReadyMessageData,
+      );
+      if (!Array.isArray(onReadyMessageData?.supportedApiMethods)) {
+        throw new Error(
+          'onReadyMessageData must have supportedApiMethods array',
+        );
+      }
+
+      const newPlayerController = {
+        ...Object.fromEntries(
+          onReadyMessageData.supportedApiMethods.map(method => {
+            return [method, (...args) => executePlayerMethod(method, args)];
+          }),
+        ),
+        supportedApiMethods: Object.freeze([
+          ...onReadyMessageData.supportedApiMethods,
+        ]),
+      };
+      playerControllerRef.current = newPlayerController;
+      setPlayerController(newPlayerController);
+    },
+    [executePlayerMethod],
+  );
+
+  useImperativeHandle(ref, () => playerController, [playerController]);
 
   useEffect(() => {
     if (!playerReady) {
       // no instance of player is ready
       return;
     }
+    if (play) {
+      playerControllerRef.current.playVideo();
+    } else {
+      playerControllerRef.current.pauseVideo();
+    }
+    if (mute) {
+      playerControllerRef.current.mute();
+    } else {
+      playerControllerRef.current.unMute();
+    }
 
-    // [
-    //   playMode[play],
-    //   soundMode[mute],
-    //   PLAYER_FUNCTIONS.setVolume(volume),
-    //   PLAYER_FUNCTIONS.setPlaybackRate(playbackRate),
-    // ].forEach(webViewRef.current.injectJavaScript);
+    playerControllerRef.current.setVolume(volume);
+    playerControllerRef.current.setPlaybackRate(playbackRate);
   }, [play, mute, volume, playbackRate, playerReady]);
 
   useEffect(() => {
@@ -162,18 +184,24 @@ const YoutubeIframe = (props, ref) => {
 
     lastPlayListRef.current = playList;
 
-    // webViewRef.current.injectJavaScript(
-    //   PLAYER_FUNCTIONS.loadPlaylist(playList, playListStartIndex, play),
-    // );
+    const index = playListStartIndex || 0;
+    const func = play ? 'loadPlaylist' : 'cuePlaylist';
+
+    const list = typeof playList === 'string' ? `"${playList}"` : 'undefined';
+    const playlist = Array.isArray(playList)
+      ? `"${playList.join(',')}"`
+      : 'undefined';
+    const listType =
+      typeof playList === 'string' ? `"${playlist}"` : 'undefined';
+
+    playerControllerRef.current[func]({listType, list, playlist, index});
   }, [playList, play, playListStartIndex, playerReady]);
 
   const onWebMessage = useCallback(
     event => {
+      console.log('onWebMessage in lib', event);
       try {
-        console.log("YoutubeIframe:174 - matches source", event.nativeEvent.source === webViewRef.current);
-        console.log("YoutubeIframe:173 - onWebMessage", event);
         const message = JSON.parse(event.nativeEvent.data);
-        console.log("YoutubeIframe:175 - message", message.eventType, message.data);
 
         switch (message.eventType) {
           case 'fullScreenChange':
@@ -183,8 +211,9 @@ const YoutubeIframe = (props, ref) => {
             onChangeState(PLAYER_STATES[message.data]);
             break;
           case 'playerReady':
-            onReady();
+            initializePlayerController(message.data);
             setPlayerReady(true);
+            onReady();
             break;
           case 'playerQualityChange':
             onPlaybackQualityChange(message.data);
@@ -195,6 +224,8 @@ const YoutubeIframe = (props, ref) => {
           case 'playbackRateChange':
             onPlaybackRateChange(message.data);
             break;
+          case 'Console':
+            console[message.data.type](`[WebViewConsole]`, ...message.data.log);
           default:
             eventEmitter.current.emit(message.eventType, message.data);
             break;
@@ -204,12 +235,13 @@ const YoutubeIframe = (props, ref) => {
       }
     },
     [
-      onReady,
-      onError,
-      onChangeState,
       onFullScreenChange,
-      onPlaybackRateChange,
+      onChangeState,
+      onReady,
+      initializePlayerController,
       onPlaybackQualityChange,
+      onError,
+      onPlaybackRateChange,
     ],
   );
 
@@ -266,6 +298,17 @@ const YoutubeIframe = (props, ref) => {
   return (
     <View style={{height, width}}>
       <WebView
+        injectedJavaScriptBeforeContentLoaded={`
+  const consoleLog = (type, log) => window.ReactNativeWebView.postMessage(JSON.stringify({'eventType': 'Console', 'data': {'type': type, 'log': log}}));
+  console = {
+      log: (...log) => consoleLog('log', log),
+      debug: (...log) => consoleLog('debug', log),
+      info: (...log) => consoleLog('info', log),
+      warn: (...log) => consoleLog('warn', log),
+      error: (...log) => consoleLog('error', log),
+    };
+    console.log('WebView injectedJavaScript executed');
+`}
         bounces={false}
         originWhitelist={['*']}
         allowsInlineMediaPlayback

@@ -1,6 +1,7 @@
 import React from 'react';
 import {StyleProp, ViewStyle} from 'react-native';
 import {WebViewProps} from 'react-native-webview';
+import {YouTubePlayer} from 'youtube-player/dist/types';
 
 export enum PLAYER_STATES {
   ENDED = 'ended',
@@ -18,16 +19,33 @@ export enum PLAYER_ERRORS {
   INVALID_PARAMETER = 'invalid_parameter',
 }
 
-export interface YoutubeIframeRef {
-  getDuration: () => Promise<number>;
-  getVideoUrl: () => Promise<string>;
-  getCurrentTime: () => Promise<number>;
-  isMuted: () => Promise<boolean>;
-  getVolume: () => Promise<number>;
-  getPlaybackRate: () => Promise<number>;
-  getAvailablePlaybackRates: () => Promise<number[]>;
-  seekTo: (seconds: number, allowSeekAhead: boolean) => void;
+export type YoutubeIframeRef = SupportedApiMethods & YouTubePlayer; // & AdditionalYoutubeApiMethods;
+
+interface SupportedApiMethods {
+  /**
+   * Lists out the supported API methods for the YoutubeIframeRef.
+   * Populated when player is ready.
+   */
+  supportedApiMethods: string[];
+  // getDuration: () => Promise<number>;
+  // getVideoUrl: () => Promise<string>;
+  // getCurrentTime: () => Promise<number>;
+  // isMuted: () => Promise<boolean>;
+  // getVolume: () => Promise<number>;
+  // getPlaybackRate: () => Promise<number>;
+  // getAvailablePlaybackRates: () => Promise<number[]>;
+  // seekTo: (seconds: number, allowSeekAhead: boolean) => void;
 }
+
+/**
+ * YouTube offers additional API methods that can be called from the
+ * YoutubeIframeRef but are not documented here. See:
+ * https://developers.google.com/youtube/iframe_api_reference#Playback_controls
+ */
+type AdditionalYoutubeApiMethods = Record<
+  string,
+  (...args: unknown[]) => Promise<unknown>
+>;
 
 export interface InitialPlayerParams {
   loop?: boolean;

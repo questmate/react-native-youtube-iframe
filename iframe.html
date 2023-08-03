@@ -1,151 +1,246 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta name="viewport" content="width=device-width," />
-    <style>
+<head>
+  <meta name="viewport" content="width=device-width," />
+  <style>
       body {
-        margin: 0;
+          margin: 0;
       }
       .container {
-        position: relative;
-        width: 100%;
-        height: 0;
-        padding-bottom: 56.25%;
+          position: relative;
+          width: 100%;
+          height: 0;
+          padding-bottom: 56.25%;
       }
       .video {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
       }
-    </style>
-  </head>
-  <body>
-    <div class="container">
-      <div class="video" id="player"></div>
-    </div>
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="video" id="player"></div>
+</div>
 
-    <script>
-      const randomPlayerId = 'player' + Date.now();
-      document.getElementById('player').id = randomPlayerId;
+<script>
+  var randomPlayerId = "player" + Date.now();
+  document.getElementById("player").id = randomPlayerId;
 
-      const parsedUrl = new URL(window.location.href);
-      const UrlQueryData = parsedUrl.searchParams.get('data');
-      const {
-        end,
-        list,
-        color,
-        start,
-        rel_s,
-        loop_s,
-        listType,
-        playerLang,
-        playlist,
-        videoId_s,
-        controls_s,
-        cc_lang_pref_s,
-        contentScale_s,
-        allowWebViewZoom,
-        modestbranding_s,
-        iv_load_policy,
-        preventFullScreen_s,
-        showClosedCaptions_s,
-      } = JSON.parse(UrlQueryData);
+  var parsedUrl = new URL(window.location.href);
+  var urlQueryData = parsedUrl.searchParams.get("data");
+  var queryData = JSON.parse(urlQueryData);
 
-      function sendMessageToRN(msg) {
-        window.ReactNativeWebView.postMessage(JSON.stringify(msg));
+  var metaString = "";
+  if (queryData.contentScale_s) {
+    metaString += `initial-scale=${queryData.contentScale_s}, `;
+  }
+
+  if (!queryData.allowWebViewZoom) {
+    metaString += `maximum-scale=${queryData.contentScale_s}`;
+  }
+
+  var viewport = document.querySelector("meta[name=viewport]");
+  viewport.setAttribute("content", "width=device-width, " + metaString);
+
+  var tag = document.createElement("script");
+  tag.src = "https://www.youtube.com/iframe_api";
+  var firstScriptTag = document.getElementsByTagName("script")[0];
+  firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+  var player;
+
+  /**
+   * Global function called by YouTube Iframe API
+   * https://developers.google.com/youtube/iframe_api_reference#Loading_a_Video_Player
+   */
+  function onYouTubeIframeAPIReady() {
+    player = new YT.Player(randomPlayerId, {
+      width: "1000",
+      height: "1000",
+      videoId: queryData.videoId_s,
+      playerVars: {
+        end: queryData.end,
+        rel: queryData.rel_s,
+        list: queryData.list,
+        color: queryData.color,
+        loop: queryData.loop_s,
+        start: queryData.start,
+        playsinline: 1,
+        hl: queryData.playerLang,
+        playlist: queryData.playlist,
+        listType: queryData.listType,
+        controls: queryData.controls_s,
+        fs: queryData.preventFullScreen_s,
+        cc_lang_pref: queryData.cc_lang_pref_s,
+        iv_load_policy: queryData.iv_load_policy,
+        modestbranding: queryData.modestbranding_s,
+        cc_load_policy: queryData.showClosedCaptions_s,
+      },
+      events: {
+        onReady: onReady,
+        onError: forwardEventAs("playerError"),
+        onStateChange: forwardEventAs("playerStateChange"),
+        onPlaybackRateChange: forwardEventAs("playbackRateChange"),
+        onPlaybackQualityChange: forwardEventAs("playerQualityChange"),
+      },
+    });
+    console.log("onYouTubeIframeAPIReady");
+  }
+
+  function sendMessageToRN(msg) {
+    var reactNativeWebView = window.ReactNativeWebView;
+    var reactNativeWebWebview = window.parent;
+    console.log("react-native-youtube-iframe:96 - Sending msg", msg);
+
+    if (reactNativeWebView) {
+      reactNativeWebView.postMessage(JSON.stringify(msg));
+    } else {
+      reactNativeWebWebview.postMessage(JSON.stringify(msg), "*");
+    }
+  }
+
+  function forwardEventAs(eventType) {
+    return function (event) {
+      sendMessageToRN({ eventType: eventType, data: (event || {}).data });
+    };
+  }
+
+  function onReady() {
+    sendMessageToRN({
+      eventType: "playerReady",
+      data: {
+        supportedApiMethods: player.getApiInterface(),
+      },
+    });
+  }
+
+  function onFullScreenChange() {
+    var isFullScreen =
+      document.fullscreenElement ||
+      document.msFullscreenElement ||
+      document.mozFullScreenElement ||
+      document.webkitFullscreenElement;
+
+    sendMessageToRN({
+      eventType: "fullScreenChange",
+      data: Boolean(isFullScreen),
+    });
+  }
+
+  document.addEventListener("fullscreenchange", onFullScreenChange);
+  document.addEventListener("msfullscreenchange", onFullScreenChange);
+  document.addEventListener("mozfullscreenchange", onFullScreenChange);
+  document.addEventListener("webkitfullscreenchange", onFullScreenChange);
+
+  function extractMessageData(message) {
+    if (message && typeof message.data === "string") {
+      let messageData;
+      try {
+        messageData = JSON.parse(message.data);
+      } catch (e) {
+        console.warn(
+          "[react-native-youtube-iframe.html] Failed to parse message.data for message:",
+          message,
+          "\nError:",
+          e
+        );
+        return;
       }
 
-      let metaString = '';
-      if (contentScale_s) {
-        metaString += `initial-scale=${contentScale_s}, `;
+      if (typeof messageData !== "object") {
+        console.warn(
+          "[react-native-youtube-iframe.html] Unsupported message data received.",
+          messageData,
+          message
+        );
+        return undefined;
       }
 
-      if (!allowWebViewZoom) {
-        metaString += `maximum-scale=${contentScale_s}`;
+      return messageData;
+    }
+  }
+
+  window.addEventListener("message", function (message) {
+    console.log("Received Message in iFrame", message.data);
+    if (!message || message.origin === "https://www.youtube.com") {
+      // ignore events from the YouTube iframe
+      return;
+    }
+    const messageData = extractMessageData(message);
+    if (!messageData) {
+      // invalid message
+      return;
+    }
+
+    if (messageData.eventType === "executePlayerMethod") {
+      const { id, method, args } = messageData.data;
+      let result;
+      let error;
+      try {
+        console.debug("Executing player method", { id, method, args });
+        result = player[method](...args);
+      } catch (e) {
+        console.warn(
+          "[react-native-youtube-iframe.html] Failed to execute the following player method.",
+          JSON.stringify({ id, method, args }),
+          "\nError:",
+          e
+        );
+        error = e;
       }
+      sendMessageToRN({
+        eventType: "playerMethodExecuted(" + id + ")",
+        data: {
+          id,
+          result,
+          error,
+        },
+      });
+    }
+  });
 
-      const viewport = document.querySelector('meta[name=viewport]');
-      viewport.setAttribute('content', 'width=device-width, ' + metaString);
+  document.addEventListener("message", function (message) {
+    console.log("DOCUMENT Received Message in iFrame", message.data);
+    if (!message || message.origin === "https://www.youtube.com") {
+      // ignore events from the YouTube iframe
+      return;
+    }
+    const messageData = extractMessageData(message);
+    if (!messageData) {
+      // invalid message
+      return;
+    }
 
-      var tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      var firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-
-      var player;
-      function onYouTubeIframeAPIReady() {
-        player = new YT.Player(randomPlayerId, {
-          width: '1000',
-          height: '1000',
-          videoId: videoId_s,
-          playerVars: {
-            end: end,
-            rel: rel_s,
-            list: list,
-            color: color,
-            loop: loop_s,
-            start: start,
-            playsinline: 1,
-            hl: playerLang,
-            playlist: playlist,
-            listType: listType,
-            controls: controls_s,
-            fs: preventFullScreen_s,
-            cc_lang_pref: cc_lang_pref_s,
-            iv_load_policy: iv_load_policy,
-            modestbranding: modestbranding_s,
-            cc_load_policy: showClosedCaptions_s,
-          },
-          events: {
-            onReady: onPlayerReady,
-            onError: onPlayerError,
-            onStateChange: onPlayerStateChange,
-            onPlaybackRateChange: onPlaybackRateChange,
-            onPlaybackQualityChange: onPlaybackQualityChange,
-          },
-        });
+    if (messageData.eventType === "executePlayerMethod") {
+      const { id, method, args } = messageData.data;
+      let result;
+      let error;
+      try {
+        console.debug("Executing player method", { id, method, args });
+        result = player[method](...args);
+      } catch (e) {
+        console.warn(
+          "[react-native-youtube-iframe.html] Failed to execute the following player method.",
+          JSON.stringify({ id, method, args }),
+          "\nError:",
+          e
+        );
+        error = e;
       }
-
-      function onPlayerError(event) {
-        sendMessageToRN({eventType: 'playerError', data: event.data});
-      }
-
-      function onPlaybackRateChange(event) {
-        sendMessageToRN({eventType: 'playbackRateChange', data: event.data});
-      }
-
-      function onPlaybackQualityChange(event) {
-        sendMessageToRN({eventType: 'playerQualityChange', data: event.data});
-      }
-
-      function onPlayerReady(event) {
-        sendMessageToRN({eventType: 'playerReady'});
-      }
-
-      function onPlayerStateChange(event) {
-        sendMessageToRN({eventType: 'playerStateChange', data: event.data});
-      }
-
-      var isFullScreen = false;
-      function onFullScreenChange() {
-        isFullScreen =
-          document.fullscreenElement ||
-          document.msFullscreenElement ||
-          document.mozFullScreenElement ||
-          document.webkitFullscreenElement;
-
-        sendMessageToRN({
-          eventType: 'fullScreenChange',
-          data: Boolean(isFullScreen),
-        });
-      }
-
-      document.addEventListener('fullscreenchange', onFullScreenChange);
-      document.addEventListener('msfullscreenchange', onFullScreenChange);
-      document.addEventListener('mozfullscreenchange', onFullScreenChange);
-      document.addEventListener('webkitfullscreenchange', onFullScreenChange);
-    </script>
-  </body>
+      sendMessageToRN({
+        eventType: "playerMethodExecuted(" + id + ")",
+        data: {
+          id,
+          result,
+          error,
+        },
+      });
+    }
+  });
+</script>
+</body>
 </html>

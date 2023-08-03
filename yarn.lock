@@ -684,6 +684,11 @@
   resolved "https://registry.yarnpkg.com/@types/json-schema/-/json-schema-7.0.5.tgz#dcce4430e64b443ba8945f0290fb564ad5bac6dd"
   integrity sha512-7+2BITlgjgDhH0vvwZU/HZJVyk+2XUlvxXe8dFMedNX/aMkaOq++rMAFXc0tM7ij15QaWlbdQASBR9dihi+bDQ==
 
+"@types/youtube-player@^5.5.7":
+  version "5.5.7"
+  resolved "https://registry.yarnpkg.com/@types/youtube-player/-/youtube-player-5.5.7.tgz#9679aa54f6b314877b7b482705224983d6161971"
+  integrity sha512-W8F4eoTIvzXeNrT3JroQPimZLXnlJA8smYygHZUKFPVoYwgs/OhJkA1VBhL3iSs57OQkuINqHlY4SmMT5wtnJg==
+
 "@typescript-eslint/eslint-plugin@^3.1.0":
   version "3.10.0"
   resolved "https://registry.yarnpkg.com/@typescript-eslint/eslint-plugin/-/eslint-plugin-3.10.0.tgz#40fd53e81639c0d1a515b44e5fdf4c03dfd3cd39"
